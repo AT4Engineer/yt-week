@@ -59,7 +59,8 @@ td.n{{text-align:right;white-space:nowrap}}a{{color:#8ab4ff;text-decoration:none
 ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 </style></head><body><main>
 <p class=mut>@AT4Engineer · week of {wk_start:%a %b %-d} · generated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</p>
-<h1>Your YouTube week</h1>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1>Your YouTube week</h1><button onclick="location.replace(location.pathname+'?v='+Date.now())" style="background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer">&#x21bb; Refresh</button></div>
+<p class=mut style="margin:2px 0 0"><b style="color:#e8ebf0">Last updated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</b> · Refresh loads the newest published version; data only changes when the box rebuilds it.</p>
 <div class="card verdict"><b>{e(verdict)}</b>{e(verdict2)}<p class=mut>Cadence target ({TARGET_PER_DAY:g} Short/day) is an assumption — change with <code>build.py --per-day N</code>. "Queued" counts finished renders on the box; none are confirmed scheduled in YouTube Studio yet.</p></div>
 <div class="card"><h2>Week at a glance</h2><div class=grid>
 <div class=kpi><span class=mut>Views, last 7 days</span><b>{fmt(s7)}</b><span class=mut>{"+" if s7>=p7 else ""}{(s7-p7)/p7*100:.0f}% vs prior 7</span></div>
