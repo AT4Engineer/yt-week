@@ -7,6 +7,9 @@ TARGET_PER_DAY = float(sys.argv[sys.argv.index('--per-day')+1]) if '--per-day' i
 W='/workspace'; today=dt.date.today()
 wk_start=today-dt.timedelta(days=(today.weekday()+1)%7)  # Sunday-start week
 e=html.escape
+import json
+_lu=os.path.join(os.path.dirname(os.path.abspath(__file__)),'live_url.txt')
+LIVE_URL=open(_lu).read().strip() if os.path.exists(_lu) else ''
 def fmt(n): return f"{int(n):,}"
 # --- videos from Studio export
 vids=[]
@@ -59,8 +62,8 @@ td.n{{text-align:right;white-space:nowrap}}a{{color:#8ab4ff;text-decoration:none
 ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 </style></head><body><main>
 <p class=mut>@AT4Engineer · week of {wk_start:%a %b %-d} · generated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</p>
-<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1>Your YouTube week</h1><button onclick="location.replace(location.pathname+'?v='+Date.now())" style="background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer">&#x21bb; Refresh</button></div>
-<p class=mut style="margin:2px 0 0"><b style="color:#e8ebf0">Last updated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</b> · Refresh loads the newest published version; data only changes when the box rebuilds it.</p>
+<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1>Your YouTube week</h1><button id=rf onclick="doRefresh()" style="background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer">&#x21bb; Refresh</button></div>
+<p class=mut style="margin:2px 0 0"><b style="color:#e8ebf0">Last updated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</b> · <span id=rfmsg>Refresh rebuilds the dashboard on the box, then reloads.</span></p>
 <div class="card verdict"><b>{e(verdict)}</b>{e(verdict2)}<p class=mut>Cadence target ({TARGET_PER_DAY:g} Short/day) is an assumption — change with <code>build.py --per-day N</code>. "Queued" counts finished renders on the box; none are confirmed scheduled in YouTube Studio yet.</p></div>
 <div class="card"><h2>Week at a glance</h2><div class=grid>
 <div class=kpi><span class=mut>Views, last 7 days</span><b>{fmt(s7)}</b><span class=mut>{"+" if s7>=p7 else ""}{(s7-p7)/p7*100:.0f}% vs prior 7</span></div>
@@ -87,6 +90,16 @@ ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 <li>No titles/upload status for the {queued} rendered Shorts.</li>
 <li>Bot chat transcripts weren't readable; "what bots did" comes from files they left on the box.</li>
 <li>No written ideas backlog was found.</li></ul></div>
-</main></body></html>'''
+</main><script>
+const LIVE={json.dumps(LIVE_URL)};
+function bust(){{location.replace(location.pathname+'?v='+Date.now())}}
+async function doRefresh(){{const b=document.getElementById('rf'),m=document.getElementById('rfmsg');b.disabled=true;b.textContent='Refreshing…';
+ if(!LIVE){{m.textContent='live refresh offline';return setTimeout(bust,1200)}}
+ try{{const c=new AbortController();setTimeout(()=>c.abort(),90000);const r=await fetch(LIVE+'/refresh',{{method:'POST',signal:c.signal}});
+  if(r.status==429){{const j=await r.json();m.textContent='Just refreshed — try again in '+j.retry_in+'s (reloading latest)';}}
+  else if(!r.ok) throw 0; else m.textContent='Rebuilt — reloading…';
+  if(location.hostname.endsWith('github.io')){{location.replace(LIVE+'/?v='+Date.now())}} else bust();
+ }}catch(e){{m.textContent='live refresh offline';setTimeout(bust,1500)}}}}
+</script></body></html>'''
 open(os.path.join(os.path.dirname(os.path.abspath(__file__)),'index.html'),'w').write(page)
 print(verdict,'|',verdict2)
