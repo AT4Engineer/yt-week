@@ -43,6 +43,31 @@ need_by=covered_through+dt.timedelta(days=1)
 ok=covered_days>=7
 verdict=("You're covered" if ok else "Partly covered")+f" — {queued} Shorts rendered = {covered_days} days at {TARGET_PER_DAY:g}/day"
 verdict2=f"Covered through {covered_through:%a %b %-d}. Need new content by {need_by:%a %b %-d}."
+# --- scheduled uploads (YouTube Bot: batch*/upload_results.json + yt/checks.md)
+import zoneinfo
+ET=zoneinfo.ZoneInfo('America/New_York'); now_et=dt.datetime.now(ET)
+sched={}
+for p in glob.glob(f'{W}/shorts/batch*/upload_results.json'):
+    try:
+        for row in json.load(open(p)):
+            if len(row)>=5 and row[4]=='ok' and row[3]:
+                sched[row[2]]=dict(id=row[2],t=re.sub(r'\s*#\S+','',row[1]).strip(),when=dt.datetime.fromisoformat(row[3].replace('Z','+00:00')).astimezone(ET))
+    except Exception: pass
+if os.path.exists(f'{W}/yt/checks.md'):
+    for m in re.finditer(r'^- \[.\] (\S+) (.+?) \(pub \w+ (\w+ \d+) (\d+)(?::(\d+))? ?([AP]M)\)',open(f'{W}/yt/checks.md').read(),re.M):
+        vid,t,md,h,mi,ap=m.groups()
+        try: w=dt.datetime.strptime(f'{md} {today.year} {h}:{mi or "00"} {ap}','%b %d %Y %I:%M %p').replace(tzinfo=ET)
+        except Exception: continue
+        sched.setdefault(vid,dict(id=vid,t=t.strip(),when=w))
+upcoming=sorted([v for v in sched.values() if v['when']>now_et],key=lambda v:v['when'])
+if upcoming:
+    covered_through=upcoming[-1]['when'].date(); covered_days=(covered_through-today).days
+    need_by=covered_through+dt.timedelta(days=1); ok=covered_days>=7
+    days={v['when'].date() for v in upcoming}
+    gaps=[today+dt.timedelta(days=i) for i in range(1,covered_days+1) if today+dt.timedelta(days=i) not in days]
+    verdict=("You're covered" if ok else "Partly covered")+f" — {len(upcoming)} Shorts scheduled in YouTube, {covered_days} days of runway"
+    verdict2=f"Covered through {covered_through:%a %b %-d}. Need new content by {need_by:%a %b %-d}."+(f" Gaps: {', '.join(f'{d:%a %b %-d}' for d in gaps)}." if gaps else " No gaps.")
+sched_rows=''.join(f'<tr><td>{v["when"]:%a %b %-d, %-I:%M %p}</td><td><a href="https://youtu.be/{e(v["id"])}">{e(v["t"])}</a></td><td><span class="pill green">Scheduled</span></td></tr>' for v in upcoming)
 # --- render
 bars=''.join(f'<div class="bar" title="{d}: {v:,}"><i style="height:{v/max(x for _,x in daily)*100:.0f}%"></i></div>' for d,v in daily)
 def rows(vs): return ''.join(f'<tr><td>{v["d"]:%a %b %-d}</td><td><a href="https://youtu.be/{e(v["id"])}">{e(v["t"])}</a></td><td class=n>{fmt(v["v"])}</td></tr>' for v in vs) or '<tr><td colspan=3>None found</td></tr>'
@@ -64,7 +89,7 @@ ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 <p class=mut>@AT4Engineer · week of {wk_start:%a %b %-d} · generated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</p>
 <div style="display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap"><h1>Your YouTube week</h1><button id=rf onclick="doRefresh()" style="background:var(--acc);color:#fff;border:0;border-radius:10px;padding:10px 16px;font-size:15px;font-weight:600;cursor:pointer">&#x21bb; Refresh</button></div>
 <p class=mut style="margin:2px 0 0"><b style="color:#e8ebf0">Last updated {dt.datetime.now():%a %b %-d, %-I:%M %p} ET</b> · <span id=rfmsg>Refresh rebuilds the dashboard on the box, then reloads.</span></p>
-<div class="card verdict"><b>{e(verdict)}</b>{e(verdict2)}<p class=mut>Cadence target ({TARGET_PER_DAY:g} Short/day) is an assumption — change with <code>build.py --per-day N</code>. "Queued" counts finished renders on the box; none are confirmed scheduled in YouTube Studio yet.</p></div>
+<div class="card verdict"><b>{e(verdict)}</b>{e(verdict2)}<p class=mut>Cadence target ({TARGET_PER_DAY:g} Short/day) is an assumption — change with <code>build.py --per-day N</code>. {"Runway counts Shorts YouTube Bot has scheduled in YouTube (from its upload results on the box)." if upcoming else '"Queued" counts finished renders on the box; none are confirmed scheduled in YouTube Studio yet.'}</p></div>
 <div class="card"><h2>Week at a glance</h2><div class=grid>
 <div class=kpi><span class=mut>Views, last 7 days</span><b>{fmt(s7)}</b><span class=mut>{"+" if s7>=p7 else ""}{(s7-p7)/p7*100:.0f}% vs prior 7</span></div>
 <div class=kpi><span class=mut>Views, 28 days</span><b>{fmt(tot["Views"])}</b><span class=mut>+{tot["Subscribers"]} subs</span></div>
@@ -73,8 +98,8 @@ ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 <p class=mut style="margin-top:12px">Daily views {daily[0][0]} → {daily[-1][0]} (Studio export pulled {export_mtime:%b %-d %-I:%M %p}; latest days lag)</p><div class=chart>{bars}</div></div>
 <div class=card><h2>Published recently</h2><div class=tbl><table>{rows(recent)}</table></div>
 {"<p class=mut>No publish date in export (draft / unlisted / scheduled? unknown): "+", ".join(e(v["t"]) for v in nodate)+"</p>" if nodate else ""}</div>
-<div class=card><h2>Content runway</h2><div class=tbl><table><tr class=mut><td>File</td><td>Sim result</td><td>Rendered</td><td>Status</td></tr>{pipe_rows}</table></div>
-<p class=mut>Formats YouTube Bot's generator supports: race, bounce, bridge, escape, grow, hexagon (physics-sim series). Scheduled uploads in Studio: <b>unknown</b>.</p></div>
+<div class=card><h2>Content runway</h2>{"<h2 style=\"font-size:14px\">Scheduled to publish</h2><div class=tbl><table>"+sched_rows+"</table></div><h2 style=\"font-size:14px;margin-top:14px\">Rendered files (batch 1)</h2>" if upcoming else ""}<div class=tbl><table><tr class=mut><td>File</td><td>Sim result</td><td>Rendered</td><td>Status</td></tr>{pipe_rows}</table></div>
+<p class=mut>Formats YouTube Bot's generator supports: race, bounce, bridge, escape, grow, hexagon (physics-sim series). {"" if upcoming else "Scheduled uploads in Studio: <b>unknown</b>."}</p></div>
 <div class=card><h2>What your bots did</h2>
 <p><span class="pill green">YouTube Bot</span></p><ul>
 <li>Built a physics-sim Shorts generator (<code>make_short.py</code>: race, bounce, bridge, escape, grow, hexagon; public-domain melodies on collisions).</li>
@@ -86,7 +111,7 @@ ul{{margin:0;padding-left:18px}}li{{margin:4px 0}}.tbl{{overflow-x:auto}}
 <li>Best days for Shorts: Sat (2,381/day) and Sun (2,348/day). Swipe-away rate and best posting hour aren't in the API (Studio only).</li></ul></div>
 <div class=card><h2>Top videos, last 28 days</h2><div class=tbl><table>{"".join(f'<tr><td><a href="https://youtu.be/{e(v["id"])}">{e(v["t"])}</a></td><td class=n>{fmt(v["v"])}</td></tr>' for v in top28)}</table></div></div>
 <div class=card><h2>Data gaps</h2><ul class=mut>
-<li>No Studio schedule data: we don't know whether any Shorts are scheduled to publish.</li>
+{"" if upcoming else "<li>No Studio schedule data: we don't know whether any Shorts are scheduled to publish.</li>"}
 <li>No titles/upload status for the {queued} rendered Shorts.</li>
 <li>Bot chat transcripts weren't readable; "what bots did" comes from files they left on the box.</li>
 <li>No written ideas backlog was found.</li></ul></div>
